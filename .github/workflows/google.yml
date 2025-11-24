@@ -55,4 +55,5 @@ jobs:
       # 4️⃣ Print authentication method
       # --------------------------------------------------------------
       - name: Print authentication result
-        run: echo "Authenticated using: ${{ steps.set-auth-method.outputs.auth_method }}"
+        run: |
+          echo "Authenticated using: ${{ steps.set-auth-method.outputs.auth_method }}"
