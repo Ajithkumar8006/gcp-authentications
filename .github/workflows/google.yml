@@ -1,84 +1,54 @@
-name: GCP Authentication Test (WIF + SA Fallback)
+name: GCP Authentication with WIF fallback to SA
 
 on:
   workflow_dispatch:
 
 jobs:
-  gcp-auth:
+  auth:
     runs-on: ubuntu-latest
+    outputs:
+      auth_method: ${{ steps.set-auth-method.outputs.auth_method }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # ----------------------------
+      # 1️⃣ Try WIF Authentication
+      # ----------------------------
+      - name: Authenticate using Workload Identity Federation
+        id: wif
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }} # e.g. projects/123/locations/global/workloadIdentityPools/pool/providers/provider
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          token_format: access_token
 
-      ############################################################
-      # 1. Try WIF Authentication
-      ############################################################
-      - name: Attempt WIF Authentication
-        id: wif_auth
-        shell: bash
+      # ----------------------------
+      # 2️⃣ If WIF failed → try SA key
+      # ----------------------------
+      - name: Authenticate using Service Account Key
+        id: sa
+        if: steps.wif.outcome == 'failure'
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # ----------------------------
+      # 3️⃣ Determine which method was used
+      # ----------------------------
+      - name: Set auth method output
+        id: set-auth-method
         run: |
-          echo "Attempting authentication using Workforce Identity Federation..."
-
-          # Save WIF JSON to file
-          echo "${WIF_CREDENTIALS_JSON}" > wif.json
-
-          set +e
-          gcloud auth login \
-            --cred-file=wif.json >/dev/null 2>&1
-
-          STATUS=$?
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-
-          if [ $STATUS -eq 0 ]; then
-            echo "WIF authentication succeeded."
-            echo "method=WIF" >> $GITHUB_OUTPUT
+          if [ "${{ steps.wif.outcome }}" = "success" ]; then
+            echo "auth_method=WIF" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.sa.outcome }}" = "success" ]; then
+            echo "auth_method=SERVICE_ACCOUNT" >> $GITHUB_OUTPUT
           else
-            echo "WIF authentication FAILED."
-            echo "method=FAILED" >> $GITHUB_OUTPUT
+            echo "auth_method=FAILED" >> $GITHUB_OUTPUT
           fi
-        env:
-          WIF_CREDENTIALS_JSON: ${{ secrets.WIF_CREDENTIALS_JSON }}
 
-      ############################################################
-      # 2. If WIF failed → Try Service Account Key auth
-      ############################################################
-      - name: Authenticate with Service Account (fallback)
-        id: sa_auth
-        if: steps.wif_auth.outputs.status != '0'
-        shell: bash
-        run: |
-          echo "Trying fallback authentication using Service Account key..."
-
-          echo "${SA_KEY_JSON}" > sa.json
-
-          set +e
-          gcloud auth activate-service-account \
-            --key-file=sa.json >/dev/null 2>&1
-
-          STATUS=$?
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-
-          if [ $STATUS -eq 0 ]; then
-            echo "Service Account authentication succeeded."
-            echo "method=SA" >> $GITHUB_OUTPUT
-          else
-            echo "Service Account authentication FAILED."
-            echo "method=FAILED" >> $GITHUB_OUTPUT
-          fi
-        env:
-          SA_KEY_JSON: ${{ secrets.GCP_SA_KEY }}
-
-      ############################################################
-      # 3. Print result
-      ############################################################
-      - name: Print Authentication Method Used
-        run: |
-          if [ "${{ steps.wif_auth.outputs.method }}" = "WIF" ]; then
-            echo "✔ Logged in using **Workforce Identity Federation (WIF)**"
-          elif [ "${{ steps.sa_auth.outputs.method }}" = "SA" ]; then
-            echo "✔ Logged in using **Service Account key (fallback)**"
-          else
-            echo "❌ Authentication failed using both WIF and Service Account"
-            exit 1
-          fi
+      # ----------------------------
+      # 4️⃣ Print the result
+      # ----------------------------
+      - name: Print authentication result
+        run: echo "Authenticated using: ${{ steps.set-auth-method.outputs.auth_method }}"
