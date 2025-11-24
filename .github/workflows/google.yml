@@ -1,4 +1,4 @@
-name: GCP Authentication with WIF fallback to SA
+name: GCP Authentication with WIF and Fallback
 
 on:
   workflow_dispatch:
@@ -6,25 +6,29 @@ on:
 jobs:
   auth:
     runs-on: ubuntu-latest
+
     outputs:
       auth_method: ${{ steps.set-auth-method.outputs.auth_method }}
 
     steps:
-      # ----------------------------
-      # 1️⃣ Try WIF Authentication
-      # ----------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------------
+      # 1️⃣ Try Workload Identity Federation (WIF)
+      # --------------------------------------------------------------
       - name: Authenticate using Workload Identity Federation
         id: wif
         continue-on-error: true
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }} # e.g. projects/123/locations/global/workloadIdentityPools/pool/providers/provider
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
           token_format: access_token
 
-      # ----------------------------
-      # 2️⃣ If WIF failed → try SA key
-      # ----------------------------
+      # --------------------------------------------------------------
+      # 2️⃣ If WIF fails → fallback to Service Account Key
+      # --------------------------------------------------------------
       - name: Authenticate using Service Account Key
         id: sa
         if: steps.wif.outcome == 'failure'
@@ -33,22 +37,22 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # ----------------------------
-      # 3️⃣ Determine which method was used
-      # ----------------------------
-      - name: Set auth method output
+      # --------------------------------------------------------------
+      # 3️⃣ Determine which method succeeded
+      # --------------------------------------------------------------
+      - name: Set authentication method
         id: set-auth-method
         run: |
           if [ "${{ steps.wif.outcome }}" = "success" ]; then
-            echo "auth_method=WIF" >> $GITHUB_OUTPUT
+            echo "auth_method=WIF" >> "$GITHUB_OUTPUT"
           elif [ "${{ steps.sa.outcome }}" = "success" ]; then
-            echo "auth_method=SERVICE_ACCOUNT" >> $GITHUB_OUTPUT
+            echo "auth_method=SERVICE_ACCOUNT" >> "$GITHUB_OUTPUT"
           else
-            echo "auth_method=FAILED" >> $GITHUB_OUTPUT
+            echo "auth_method=FAILED" >> "$GITHUB_OUTPUT"
           fi
 
-      # ----------------------------
-      # 4️⃣ Print the result
-      # ----------------------------
+      # --------------------------------------------------------------
+      # 4️⃣ Print authentication method
+      # --------------------------------------------------------------
       - name: Print authentication result
         run: echo "Authenticated using: ${{ steps.set-auth-method.outputs.auth_method }}"
