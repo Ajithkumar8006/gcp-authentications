@@ -26,7 +26,7 @@ jobs:
         continue-on-error: true
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/68865704160/locations/global/workloadIdentityPools/github-pool-new/providers/github-provider-new
-          service_account: github-deployer@ajith-8006.iam.gserviceaccount.com
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
           token_format: access_token
 
