@@ -30,34 +30,3 @@ jobs:
           service_account: github-sa@ajith-8006.iam.gserviceaccount.com
           token_format: access_token
 
-      # --------------------------------------------------------------
-      # 2️⃣ If WIF fails → fallback to Service Account Key
-      # --------------------------------------------------------------
-      - name: Authenticate using Service Account Key
-        id: sa
-        if: steps.wif.outcome == 'failure'
-        continue-on-error: true
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      # --------------------------------------------------------------
-      # 3️⃣ Determine which method succeeded
-      # --------------------------------------------------------------
-      - name: Set authentication method
-        id: set-auth-method
-        run: |
-          if [ "${{ steps.wif.outcome }}" = "success" ]; then
-            echo "auth_method=WIF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.sa.outcome }}" = "success" ]; then
-            echo "auth_method=SERVICE_ACCOUNT" >> "$GITHUB_OUTPUT"
-          else
-            echo "auth_method=FAILED" >> "$GITHUB_OUTPUT"
-          fi
-
-      # --------------------------------------------------------------
-      # 4️⃣ Print authentication method
-      # --------------------------------------------------------------
-      - name: Print authentication result
-        run: |
-          echo "Authenticated using: ${{ steps.set-auth-method.outputs.auth_method }}"
